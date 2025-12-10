@@ -1,25 +1,35 @@
-# SF3000-RE
+Absolutely — here is an updated **INTRO.md** fully adjusted to the **new discoveries**, especially:
 
-Reverse Engineering notes and findings about the SF3000 handheld console.
+* **The SF3000 is a MIPS32 (little-endian) system**, not ARM.
+* **Custom code execution confirmed** using a static MIPS binary.
+* **Writable SD filesystem**.
+* **Launcher mechanism is replaceable/extendable**.
 
-## 🎯 Goal
-
-This project documents the internal software structure of the **SF3000 retro handheld**, with the aim of understanding how the system works, how games are launched, and how to run custom software (e.g. DOSBox Pure, SDL apps, etc.).
-
-This is **not** a hacking firmware replacement project, but a research project focused on learning and documenting.
+You can paste this directly into your GitHub repo.
 
 ---
 
-## 🧩 Hardware / OS Summary
+# SF3000-RE
 
-The SF3000 uses:
+Reverse Engineering notes and development findings for the **SF3000 retro handheld console**.
 
-* **Buildroot Linux**
-* **Linux Kernel 4.4**
-* **glibc (not musl)**
-* **aarch64 architecture**
-* custom vendor UI built with **LVGL**
-* secondary game launcher environment called **cubegm**
+## 🎯 Purpose
+
+This repository documents the internals of the SF3000 handheld:
+
+* its Linux-based operating system
+* the runtime environment (rootfs + cubegm launcher)
+* emulator architecture
+* and most importantly:
+  **how to run custom MIPS binaries on the device**
+
+All information is for educational and reverse-engineering purposes.
+
+---
+
+# 🧩 System Overview
+
+The SF3000 is a **MIPS32 (MIPS32r2) little-endian** handheld running a lightweight Linux environment built with **Buildroot**.
 
 ### `/etc/os-release`
 
@@ -31,152 +41,187 @@ VERSION_ID=2021.05-rc2
 PRETTY_NAME="Buildroot 2021.05-rc2"
 ```
 
-So the OS is basically a small embedded Linux distribution built using Buildroot.
+### Key characteristics
+
+* **CPU:** MIPS32 (LSB / little-endian, MIPS32r2 ABI)
+* **Kernel:** Linux 4.4.x
+* **Libc:** glibc
+* **Dynamic Loader:** `/lib/ld.so.1`
+* **Root filesystem:** located on the SD card under `rootfs/`
+* **Game launcher environment:** located under `cubegm/`
+* **Primary UI:** proprietary LVGL-based binary (`hcprojector`)
+* **Game launcher:** `/mnt/sdcard/cubegm/usr/bin/icube`
 
 ---
 
-## 🧠 Software Architecture (important!)
+# 📂 Filesystem Structure
 
-### Boot UI
+The SD card contains several key directories:
 
-* Main UI process is `/usr/bin/hcprojector`
-* It uses **LVGL** for the GUI
-* Started from `/etc/cubeapp_start.sh`
-* If the UI dies, a secondary launcher starts
+```
+rootfs/       → Actual system root loaded by kernel (Buildroot)
+cubegm/       → Game launcher environment + emulators
+roms/ etc.    → User ROM files and media
+```
 
-### Game Launcher
+### Important mount point (runtime):
 
-* Located under the SD card folder: `/cubegm`
-* This acts like a “mini rootfs”:
+On the device, the SD card is mounted at:
 
-  * emulator cores under `/cubegm/cores`
-  * DirectFB libs under `/cubegm/usr/lib`
-  * launcher binaries under `/cubegm/usr/bin`
+```
+/mnt/sdcard
+```
 
-### Emulators
+Thus:
 
-* Each console emulator is a shared library like:
-
-  ```
-  libemu_snes9x.so
-  libemu_mgba.so
-  libemu_mame2000.so
-  ...
-  ```
-* Launcher (`icube`) loads them dynamically
-
-### Frontend
-
-* Game launcher binary:
-
-  ```
-  cubegm/usr/bin/icube
-  ```
-* Likely responsible for reading config + loading libemu_*.so
+* `F:\cubegm` on Windows → `/mnt/sdcard/cubegm/` at runtime
+* `F:\rootfs` → `/mnt/sdcard/rootfs`
 
 ---
 
-## 🧵 Important technologies inside
+# 🕹 Emulator Architecture
 
-### UI:
+Inside `cubegm/cores/` you find all emulator cores as `.so` files:
 
-* **LVGL** (visible through exported symbols in hcprojector)
+```
+libemu_snes9x.so
+libemu_mgba.so
+libemu_nes.so
+libemu_pce.so
+...
+```
 
-### Rendering:
+They are all **MIPS32 shared objects**, dynamically linked with `/lib/ld.so.1`.
 
-* **DirectFB**, not SDL/OpenGL
-* No visible GLES/EGL system libraries
-* Means emulators are statically compiled with their own dependencies
+The launcher binary:
 
----
+```
+/mnt/sdcard/cubegm/usr/bin/icube
+```
 
-## 📁 Configuration files
+loads the appropriate core based on XML config files:
 
-* `/cubegm/cores/config.xml`
-  Maps emulator names to `.so` files
-
-* `/cubegm/cores/filelist.xml`
-  Maps game ROM file names to cores
-
-These XML files define how the launcher picks a core for each game.
-
----
-
-## ❓ Can we run custom software?
-
-**Yes, almost certainly.**
-
-### Methods:
-
-* Modify `/cubegm/icube_start.sh`
-* Replace a system emulator you don’t need with your own launcher
-* Add your own script/binary and launch it before/after `icube`
-
-Because everything important is on the SD card, this is very mod-friendly.
+* `cores/config.xml`
+* `cores/filelist.xml`
 
 ---
 
-## 🚧 What is missing
+# 🎨 UI + Graphics Stack
 
-* No shared SDL or GLES libraries
-* No RetroArch
-* Emulators seem to be fully vendor-provided
-* Custom software must bring its own libs (static linking)
+Two major subsystems exist:
 
-For example:
+### 1. **System UI (boot menu)**
 
-* DOSBox Pure will need SDL2 compiled for aarch64
-* LÖVE (Love2D) needs SDL2 + Lua (static ideally)
+* Implemented in `/usr/bin/hcprojector`
+* Uses **LVGL** (LittlevGL)
+* Runs outside the cubegm environment
 
----
+### 2. **Game UI**
 
-## 🔨 Building your own stuff
+* Implemented by `icube`
+* Uses **DirectFB** libraries (present inside cubegm/usr/lib)
 
-Best approach:
-
-* Use Windows + WSL2
-* Install aarch64 cross-compiler
-* Build a small “hello world”
-* Launch via script inside `/cubegm`
-
-Once that works, move toward SDL/DOSBox/LÖVE.
+There is **no SDL, EGL, or GLES** in the stock system.
 
 ---
 
-## 🧯 Safe Backup
+# 🧪 Custom Code Execution (Working!)
 
-Recommended:
+We achieved **full code execution on the SF3000** by replacing the launcher binary with our own MIPS32 static binary.
 
-* Create a full disk image of the SD card using Win32DiskImager
-* Also copy the directories manually
+### Steps & findings:
 
-This protects you against boot failures if you experiment.
+1. Built a static MIPS test program using:
+
+   ```
+   mipsel-linux-gnu-gcc -static
+   ```
+
+2. Replaced:
+
+   ```
+   cubegm/usr/bin/icube
+   ```
+
+   with our own test binary.
+
+3. Device booted → did not launch UI (expected), but:
+
+   * The custom binary **ran successfully**
+   * Created a file on the SD card root:
+
+     ```
+     test_log.txt
+     ```
+   * Confirmed the filesystem is writable
+
+This proves:
+
+* Custom MIPS code **executes cleanly on hardware**
+* MIPS32 static binaries require **no additional libs**
+* The `icube` binary is a valid hook for launching homebrew
 
 ---
 
-## 🚀 Next Steps (planned)
+# 🧠 What We Know Now
 
-* Cross-compile aarch64 “hello world”
-* Insert into `icube_start.sh`
-* Verify execution
-* Build SDL2 statically
-* Build DOSBox Pure / LÖVE dynamically after that
-
----
-
-## ✨ Purpose of this repo
-
-To document:
-
-* system structure
-* binaries
-* config
-* launch scripts
-* reverse engineering progress
-* potential for custom development
-
-All info here is for educational purposes.
+| Feature                 | Status                                      |
+| ----------------------- | ------------------------------------------- |
+| CPU Architecture        | **MIPS32 LSB (MIPS32r2)**                   |
+| Writes to SD card       | **Working**                                 |
+| Running custom binaries | **Working**                                 |
+| Static binaries         | **Work reliably**                           |
+| Dynamic binaries        | Must use `/lib/ld.so.1` and the correct ABI |
+| SDL2                    | Not included (must be cross-compiled)       |
+| OpenGL/EGL              | Not present                                 |
+| DirectFB                | Included in cubegm environment              |
+| LVGL                    | Used by system UI                           |
 
 ---
 
-Enjoy hacking! 😄
+# 🚀 Development Path Forward
+
+Now that execution works, potential next steps include:
+
+### ✔ Running custom helpers or apps in parallel with `icube`
+
+Modify `icube_start.sh` to run your program first, then start the UI.
+
+### ✔ Framebuffer or DirectFB graphics
+
+Draw directly to `/dev/fb0` or link against DirectFB from cubegm.
+
+### ✔ SDL2 (fbdev backend)
+
+Cross-compile SDL2 for MIPS as a static library.
+
+### ✔ DOSBox / DOSBox Pure
+
+Possible with SDL2 (no JIT on MIPS → interpreter mode, but playable for DOS).
+
+### ✔ LÖVE (Love2D)
+
+Possible but involves building LuaJIT (which is tricky on MIPS), or fallback to Lua 5.1 with non-JIT interpreter.
+
+---
+
+# 🧯 Safety Tips
+
+* Always back up the **entire SD card** (Win32DiskImager recommended)
+* Keep a copy of the original `icube` binary
+* Use static builds for early testing
+* Never delete or modify the kernel partition (not on SD anyway)
+
+---
+
+# 📌 Summary
+
+The SF3000 is a fully reverse-engineerable little MIPS-based Linux handheld.
+We now have:
+
+* A confirmed build toolchain
+* A confirmed execution hook
+* Working SD writes
+* Control over the launcher
+
+This repo aims to document all findings and help others run homebrew, custom emulators, or fully replace the launcher.
