@@ -39,7 +39,7 @@ PRETTY_NAME="Buildroot 2021.05-rc2"
 * **Root filesystem:** located on the SD card under `rootfs/`
 * **Game launcher environment:** located under `cubegm/`
 * **Primary UI:** proprietary LVGL-based binary (`hcprojector`)
-* **Game launcher:** `/mnt/sdcard/cubegm/usr/bin/icube`
+* **Game launcher:** `/mnt/sdcard/cubegm/icube`
 
 ---
 
@@ -85,7 +85,7 @@ They are all **MIPS32 shared objects**, dynamically linked with `/lib/ld.so.1`.
 The launcher binary:
 
 ```
-/mnt/sdcard/cubegm/usr/bin/icube
+/mnt/sdcard/cubegm/icube
 ```
 
 loads the appropriate core based on XML config files:
@@ -129,7 +129,7 @@ We achieved **full code execution on the SF3000** by replacing the launcher bina
 2. Replaced:
 
    ```
-   cubegm/usr/bin/icube
+   cubegm/icube
    ```
 
    with our own test binary.
