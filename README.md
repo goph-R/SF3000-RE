@@ -1,14 +1,3 @@
-Absolutely — here is an updated **INTRO.md** fully adjusted to the **new discoveries**, especially:
-
-* **The SF3000 is a MIPS32 (little-endian) system**, not ARM.
-* **Custom code execution confirmed** using a static MIPS binary.
-* **Writable SD filesystem**.
-* **Launcher mechanism is replaceable/extendable**.
-
-You can paste this directly into your GitHub repo.
-
----
-
 # SF3000-RE
 
 Reverse Engineering notes and development findings for the **SF3000 retro handheld console**.
